@@ -1,121 +1,114 @@
 import cv2
+from ultralytics import YOLO
 import math
-import time
+from flask import Flask, Response
+from flask_cors import CORS
+import socketio
 
-# =========================================
-# إعدادات
-# =========================================
-MAX_DISTANCE = 80      # أقصى مسافة لاعتبار نفس الشخص
-TIMEOUT = 2.0          # حذف الشخص إذا اختفى (بالثواني)
+# 1. إعداد الخادم والاتصال
+app = Flask(__name__)
+CORS(app)
+sio = socketio.Client()
 
-# =========================================
-# تحميل كاشف الوجوه (Haar Cascade)
-# =========================================
-face_cascade = cv2.CascadeClassifier(
-    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-)
+def connect_socket():
+    try:
+        if not sio.connected:
+            sio.connect('http://localhost:4000')
+            print("✅ Connected to Mufakker Dashboard")
+    except:
+        pass
 
-# =========================================
-# الكام (غيّر الرقم إذا لزم)
-# =========================================
-cap = cv2.VideoCapture(0)
-cap.set(3, 640)
-cap.set(4, 480)
+# 2. تحميل الموديل
+model_path = 'runs/detect/train/weights/best.pt'
+try:
+    model = YOLO(model_path)
+except:
+    model = YOLO('yolov8n.pt')
 
-# =========================================
-# تخزين الأشخاص
-# =========================================
-workers = {}
-next_id = 1
+current_score = 100
+worker_name = "Ziyad"
 
-# workers:
-# { id: {"center": (x,y), "last_seen": time} }
+def generate_frames():
+    global current_score
+    # تأكد من رقم الكاميرا (0 للأصلية، 1 للخارجية)
+    cap = cv2.VideoCapture(1) 
+    
+    if not cap.isOpened():
+        print("❌ Error: Could not open camera.")
+        return
 
-# =========================================
-# دوال مساعدة
-# =========================================
-def distance(p1, p2):
-    return math.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)
+    while cap.isOpened():
+        success, frame = cap.read()
+        if not success:
+            break
+            
+        connect_socket()
+        results = model(frame, stream=True, verbose=False)
+        
+        helmet_detected_high_conf = False
+        person_detected = False
+        detections = []
 
-def assign_id(center):
-    global next_id
+        for r in results:
+            for box in r.boxes:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                cls = int(box.cls[0])
+                conf = math.ceil(box.conf[0] * 100)
+                label = model.names[cls].lower()
+                
+                # منطق النسبة الجديد: نعتبر الخوذة موجودة فقط إذا كانت فوق 60%
+                is_valid_helmet = ('helmet' in label and conf >= 60)
+                
+                if is_valid_helmet:
+                    helmet_detected_high_conf = True
+                if 'person' in label:
+                    person_detected = True
 
-    best_id = None
-    best_dist = float("inf")
+                detections.append((x1, y1, x2, y2, label, conf, is_valid_helmet))
 
-    for wid, data in workers.items():
-        d = distance(center, data["center"])
-        if d < best_dist and d < MAX_DISTANCE:
-            best_dist = d
-            best_id = wid
+        # منطق التقييم بناءً على شرط الـ 60%
+        if person_detected and not helmet_detected_high_conf:
+            current_score = max(0, current_score - 0.2)
+            status = "NO HELMET"
+            status_color = (0, 0, 255) # أحمر
+        else:
+            current_score = min(100, current_score + 0.05)
+            status = "SAFE"
+            status_color = (173, 214, 71) # لون مينت (#47D6AD)
 
-    if best_id is not None:
-        workers[best_id]["center"] = center
-        workers[best_id]["last_seen"] = time.time()
-        return best_id
+        # رسم المربعات بناءً على النتائج والنسبة
+        for x1, y1, x2, y2, label, conf, is_valid_helmet in detections:
+            if 'person' in label:
+                color = status_color
+                display_label = f"Worker: {status}"
+            elif 'helmet' in label:
+                # إذا كانت الخوذة محققة للشرط تظهر بالأخضر، وإلا تظهر بالأحمر
+                color = (173, 214, 71) if conf >= 60 else (0, 0, 255)
+                display_label = f"Helmet: {conf}%"
+            else:
+                color = (255, 255, 255)
+                display_label = f"{label} {conf}%"
 
-    # شخص جديد
-    wid = next_id
-    next_id += 1
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            t_size = cv2.getTextSize(display_label, 1, 1, 1)[0]
+            cv2.rectangle(frame, (x1, y1 - t_size[1] - 10), (x1 + t_size[0] + 10, y1), color, -1)
+            cv2.putText(frame, display_label, (x1 + 5, y1 - 5), 1, 1, (255, 255, 255) if color == (0,0,255) else (0,0,0), 1)
 
-    workers[wid] = {
-        "center": center,
-        "last_seen": time.time()
-    }
-    return wid
+        if sio.connected:
+            sio.emit('update_data', { "score": math.ceil(current_score), "status": status })
+            
+        # لوحة معلومات Mufakker بالألوان الاحترافية (#0B2A41)
+        cv2.rectangle(frame, (0, 0), (frame.shape[1], 60), (65, 42, 11), -1) 
+        cv2.putText(frame, f"LIVE FEED | OPERATOR: {worker_name}", (20, 38), 1, 1.5, (255, 255, 255), 2)
+        cv2.circle(frame, (frame.shape[1] - 30, 32), 10, status_color, -1)
 
-def cleanup():
-    now = time.time()
-    to_delete = []
-    for wid, data in workers.items():
-        if now - data["last_seen"] > TIMEOUT:
-            to_delete.append(wid)
+        ret, buffer = cv2.imencode('.jpg', frame)
+        if not ret: continue
+        yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
 
-    for wid in to_delete:
-        del workers[wid]
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-# =========================================
-# التشغيل
-# =========================================
-print("Starting face tracking...")
-
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
-
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-    faces = face_cascade.detectMultiScale(
-        gray,
-        scaleFactor=1.3,
-        minNeighbors=5
-    )
-
-    for (x, y, w, h) in faces:
-        cx = x + w // 2
-        cy = y + h // 2
-
-        wid = assign_id((cx, cy))
-
-        # رسم
-        cv2.rectangle(frame, (x, y), (x+w, y+h), (0,255,0), 2)
-        cv2.putText(
-            frame,
-            f"Worker {wid}",
-            (x, y-10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (0,255,0),
-            2
-        )
-
-    cleanup()
-
-    cv2.imshow("Face Tracking - WorkerGuard", frame)
-
-    if cv2.waitKey(1) & 0xFF == 27:
-        break
-
-cap.release()
-cv2.destroyAllWindows()
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)

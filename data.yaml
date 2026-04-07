@@ -1,0 +1,11 @@
+# المسار الرئيسي لمجلد المشروع
+path: 'C:/Users/Zmg-1/safety-ai' 
+
+# المسارات المعدلة لتشمل المجلد الفرعي اللي فيه الصور
+train: 'Hard Hat Sample.yolov8/train/images'
+val: 'Hard Hat Sample.yolov8/train/images' # بنستخدم نفس الصور للتحقق حالياً
+
+names:
+  0: head
+  1: helmet
+  2: person

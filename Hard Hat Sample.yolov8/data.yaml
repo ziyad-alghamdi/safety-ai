@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 3
+names: ['head', 'helmet', 'person']
+
+roboflow:
+  workspace: ziyads-workspace-8vpdt
+  project: ziyads-workspace-8vpdt
+  version: dataset
+  license: Private
+  url: https://app.roboflow.com/ziyads-workspace-8vpdt/ziyads-workspace-8vpdt/dataset
