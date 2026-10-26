@@ -12,7 +12,7 @@ Automated Alert System: Instantly triggers visual and data alerts via Socket.io 
 
 Web Dashboard: A modern, minimalist interface built with Next.js to display live feeds, scores, and worker status.
 
-$ Technical Stack
+# Technical Stack
 AI/ML: Python, YOLOv8 (Ultralytics), Face_Recognition.
 
 Backend: Node.js, Socket.io (for real-time data bridging).
@@ -21,7 +21,7 @@ Frontend: Next.js, Tailwind CSS, Lucide React (for modern UI icons).
 
 Tools: OpenCV (Camera stream management).
 
-$ Project Structure
+# Project Structure
 Plaintext
 safety-ai/
 ├── main.py              # Main AI Engine (YOLO + Face Recognition)
@@ -31,22 +31,22 @@ safety-ai/
 └── safety-dashboard/    # Next.js web application
     ├── app/             # Frontend routes and components
     └── server.js        # Socket.io bridge server
-$ Installation & Setup
+# Installation & Setup
 Clone the Repository:
 
-Bash
+-Bash
 git clone https://github.com/YourUsername/mufakker-safety-ai.git
 cd mufakker-safety-ai
 Install Python Dependencies:
 
-Bash
+-Bash
 pip install ultralytics face_recognition opencv-python flask flask-cors python-socketio
 Install Frontend Dependencies:
 
-Bash
+-Bash
 cd safety-dashboard
 npm install
-$ How to Run
+# How to Run
 To start the full system, open three separate terminals:
 
 Terminal 1 (Bridge Server):
@@ -63,7 +63,7 @@ Bash
 npm run dev
 Open http://localhost:3000 to view the live safety monitor.
 
-^ System Workflow
+# System Workflow
 The system follows a 6-stage process: Video Input -> AI Detection -> Worker Recognition -> Violation Detection -> Safety Score Calculation -> Real-time Dashboard Update.
 
 Developed by Mufakker Community Turning AI into a tool for safety and thinking.
